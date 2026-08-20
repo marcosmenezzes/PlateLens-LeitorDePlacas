@@ -77,6 +77,23 @@ test('câmera IP e região de captura podem ser configuradas', async ({ page }) 
   await expect(page.getByRole('button', { name: 'Salvar região' })).toHaveCount(0)
 })
 
+test('câmera IP selecionada usa o stream como fonte de reconhecimento', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(HTMLImageElement.prototype, 'naturalWidth', { get: () => 1280 })
+    Object.defineProperty(HTMLImageElement.prototype, 'naturalHeight', { get: () => 720 })
+    HTMLCanvasElement.prototype.getContext = () => ({ drawImage() {} })
+    HTMLCanvasElement.prototype.toBlob = function (callback) { callback(new Blob(['frame'], { type: 'image/jpeg' })) }
+  })
+  await page.route('**/api/cameras', (route) => route.fulfill({ json: [{ id: '10000000-0000-0000-0000-000000000001', name: 'Câmera celular', sourceKind: 'Network', ipAddress: '192.168.15.6', port: 4747, isActive: true }] }))
+  await page.route('**/api/cameras/*/stream', (route) => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64') }))
+  let attempts = 0
+  await page.route('**/api/vision/recognize', (route) => { attempts++; return route.fulfill({ json: { recorded: false, detections: [] } }) })
+
+  await page.goto('/monitoring')
+  await expect(page.getByAltText('Vídeo ao vivo de Câmera celular')).toBeVisible()
+  await expect.poll(() => attempts).toBeGreaterThan(0)
+})
+
 test('câmera nativa inicia o reconhecimento automaticamente', async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem('platelens-gate-region', JSON.stringify({ x: .6, y: .2, width: .6, height: .8 }))

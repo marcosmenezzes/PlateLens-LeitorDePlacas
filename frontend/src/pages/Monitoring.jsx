@@ -36,11 +36,13 @@ export default function Monitoring() {
   const [form, setForm] = useState({ name: '', ipAddress: '', port: 554 })
   const [message, setMessage] = useState('')
   const [stream, setStream] = useState(null)
+  const [networkReady, setNetworkReady] = useState(false)
   const [interaction, setInteraction] = useState(null)
-  const [backendState, setBackendState] = useState('offline')
+  const [backendState, setBackendState] = useState('checking')
   const [lastDetection, setLastDetection] = useState(null)
   const [lastCrop, setLastCrop] = useState('')
   const videoRef = useRef(null)
+  const networkRef = useRef(null)
   const viewportRef = useRef(null)
   const requestsRef = useRef(0)
   const nextCaptureAtRef = useRef(0)
@@ -63,13 +65,17 @@ export default function Monitoring() {
   }, [])
 
   useEffect(() => {
-    if (!stream) return
+    if (!stream && !networkReady) return
     analyzeFrame()
     const timer = window.setInterval(analyzeFrame, 250)
     return () => window.clearInterval(timer)
-  }, [stream, region])
+  }, [stream, networkReady, region, activeId])
 
-  useEffect(() => { startNative() }, [])
+  useEffect(() => {
+    if (backendState === 'checking') return
+    if (active.kind === 'native') startNative()
+    else setStream(null)
+  }, [activeId, active.kind, backendState])
 
   useEffect(() => {
     const timer = window.setTimeout(saveRegion, 500)
@@ -114,16 +120,18 @@ export default function Monitoring() {
 
   /** Captura um quadro e envia ao pipeline de visão sem sobrepor requisições. */
   async function analyzeFrame() {
-    const video = videoRef.current
-    if (!video?.videoWidth || requestsRef.current || Date.now() < nextCaptureAtRef.current) return
+    const source = active.kind === 'native' ? videoRef.current : networkRef.current
+    const sourceWidth = source?.videoWidth || source?.naturalWidth
+    const sourceHeight = source?.videoHeight || source?.naturalHeight
+    if (!sourceWidth || requestsRef.current || Date.now() < nextCaptureAtRef.current) return
     requestsRef.current++
     const capturedAt = Date.now()
     try {
-      const scale = Math.min(1, 1280 / video.videoWidth)
+      const scale = Math.min(1, 1280 / sourceWidth)
       const canvas = document.createElement('canvas')
-      canvas.width = Math.round(video.videoWidth * scale)
-      canvas.height = Math.round(video.videoHeight * scale)
-      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height)
+      canvas.width = Math.round(sourceWidth * scale)
+      canvas.height = Math.round(sourceHeight * scale)
+      canvas.getContext('2d').drawImage(source, 0, 0, canvas.width, canvas.height)
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', .86))
       if (!blob) return
       const body = new FormData()
@@ -186,6 +194,7 @@ export default function Monitoring() {
       catch (error) { return setMessage(error.message) }
     }
     setActiveId(camera.id)
+    setNetworkReady(false)
     if (camera.kind === 'network') { stream?.getTracks().forEach((track) => track.stop()); setStream(null) }
     setMessage(`${camera.name} selecionada.`)
   }
@@ -224,12 +233,14 @@ export default function Monitoring() {
       <article className="live-panel">
         <div className="panel-title"><div><Icon name="camera" /><span>{active.name}</span></div><span className="source-chip">{active.kind === 'native' ? 'Dispositivo 0' : `${active.ipAddress}:${active.port}`}</span></div>
         <div className="camera-viewport gate-preview" ref={viewportRef}>
-          {stream && active.kind === 'native' ? <video ref={videoRef} autoPlay muted playsInline /> : <><div className="road-grid" /><div className="camera-overlay camera-overlay--transparent"><Icon name="camera" size={30} /><strong>{active.kind === 'native' ? 'Ativando câmera nativa' : 'Câmera IP cadastrada'}</strong><span>{active.kind === 'native' ? 'Autorize o navegador para manter a captura automática.' : 'O runtime RTSP será conectado ao backend de visão.'}</span></div></>}
+          {active.kind === 'network'
+            ? <img ref={networkRef} src={`/api/cameras/${active.id}/stream`} alt={`Vídeo ao vivo de ${active.name}`} onLoad={() => { setNetworkReady(true); setMessage('Câmera IP conectada. Iniciando leitura automática.') }} onError={() => { setNetworkReady(false); setMessage('Não foi possível abrir o stream /video desta câmera.') }} />
+            : stream ? <video ref={videoRef} autoPlay muted playsInline /> : <><div className="road-grid" /><div className="camera-overlay camera-overlay--transparent"><Icon name="camera" size={30} /><strong>Ativando câmera nativa</strong><span>Autorize o navegador para manter a captura automática.</span></div></>}
           <div className="capture-region" style={{ left: `${region.x * 100}%`, top: `${region.y * 100}%`, width: `${region.width * 100}%`, height: `${region.height * 100}%` }} onPointerDown={(event) => setInteraction({ mode: 'move', startX: event.clientX, startY: event.clientY, region })}>
             <span>REGIÃO DE CAPTURA</span><i onPointerDown={(event) => { event.stopPropagation(); setInteraction({ mode: 'resize', startX: event.clientX, startY: event.clientY, region }) }} aria-label="Redimensionar região" />
           </div>
           <div className="plate-sample">{lastCrop && <img src={lastCrop} alt="Recorte da última placa detectada" />}<div><small>{lastDetection ? (lastDetection.accepted ? 'PLACA CAPTURADA' : lastDetection.pendingConsensus ? 'CONFIRMANDO PLACA' : 'LEITURA NÃO VALIDADA') : 'AGUARDANDO PLACA'}</small><strong>{lastDetection?.plate || '-------'}</strong><span>{lastDetection ? `${lastDetection.plateType} · ${Math.round(lastDetection.confidence * 100)}% · qualidade ${Math.round((lastDetection.qualityScore ?? 0) * 100)}% · ${lastDetection.processingMs} ms` : 'o centro deve cruzar a região'}</span></div></div>
-          <div className="live-label"><i /> {stream ? 'AO VIVO · CAPTURA AUTOMÁTICA' : 'PRÉVIA'}</div>
+          <div className="live-label"><i /> {stream || networkReady ? 'AO VIVO · CAPTURA AUTOMÁTICA' : 'CONECTANDO'}</div>
         </div>
         <footer className="camera-meta"><div><span>Fonte</span><strong>{active.kind === 'native' ? 'Webcam USB / integrada' : 'IPv4 privado'}</strong></div><div><span>Gate</span><strong>Retângulo editável</strong></div><div><span>Captura</span><strong>Centro dentro da região</strong></div></footer>
         {active.kind === 'native' && !stream && <div className="monitor-actions"><button className="button" type="button" onClick={startNative}><Icon name="camera" />Tentar ativar câmera</button></div>}

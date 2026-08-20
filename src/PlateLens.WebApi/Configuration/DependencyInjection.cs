@@ -40,6 +40,7 @@ public static class DependencyInjection
             client.BaseAddress = new Uri(configuration["Vision:ServiceUrl"] ?? "http://127.0.0.1:8001");
             client.Timeout = TimeSpan.FromSeconds(30);
         });
+        services.AddHttpClient("NetworkCamera", client => client.Timeout = TimeSpan.FromSeconds(10));
         return services;
     }
 }
