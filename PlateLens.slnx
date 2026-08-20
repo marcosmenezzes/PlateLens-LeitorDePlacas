@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/PlateLens.Domain/PlateLens.Domain.csproj" />
+    <Project Path="src/PlateLens.Infra.Data/PlateLens.Infra.Data.csproj" />
+    <Project Path="src/PlateLens.WebApi/PlateLens.WebApi.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/PlateLens.Checks/PlateLens.Checks.csproj" />
+  </Folder>
+</Solution>
