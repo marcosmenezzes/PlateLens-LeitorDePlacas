@@ -37,6 +37,7 @@ export default function Monitoring() {
   const [message, setMessage] = useState('')
   const [stream, setStream] = useState(null)
   const [networkReady, setNetworkReady] = useState(false)
+  const [networkAttempt, setNetworkAttempt] = useState(0)
   const [interaction, setInteraction] = useState(null)
   const [backendState, setBackendState] = useState('checking')
   const [lastDetection, setLastDetection] = useState(null)
@@ -195,6 +196,7 @@ export default function Monitoring() {
     }
     setActiveId(camera.id)
     setNetworkReady(false)
+    if (camera.kind === 'network') setNetworkAttempt((attempt) => attempt + 1)
     if (camera.kind === 'network') { stream?.getTracks().forEach((track) => track.stop()); setStream(null) }
     setMessage(`${camera.name} selecionada.`)
   }
@@ -234,7 +236,7 @@ export default function Monitoring() {
         <div className="panel-title"><div><Icon name="camera" /><span>{active.name}</span></div><span className="source-chip">{active.kind === 'native' ? 'Dispositivo 0' : `${active.ipAddress}:${active.port}`}</span></div>
         <div className="camera-viewport gate-preview" ref={viewportRef}>
           {active.kind === 'network'
-            ? <img ref={networkRef} src={`/api/cameras/${active.id}/stream`} alt={`Vídeo ao vivo de ${active.name}`} onLoad={() => { setNetworkReady(true); setMessage('Câmera IP conectada. Iniciando leitura automática.') }} onError={() => { setNetworkReady(false); setMessage('Não foi possível abrir o stream /video desta câmera.') }} />
+            ? <img ref={networkRef} src={`/api/cameras/${active.id}/stream?attempt=${networkAttempt}`} alt={`Vídeo ao vivo de ${active.name}`} onLoad={() => { setNetworkReady(true); setMessage('Câmera IP conectada. Iniciando leitura automática.') }} onError={() => { setNetworkReady(false); setMessage('Não foi possível abrir o stream /video desta câmera.') }} />
             : stream ? <video ref={videoRef} autoPlay muted playsInline /> : <><div className="road-grid" /><div className="camera-overlay camera-overlay--transparent"><Icon name="camera" size={30} /><strong>Ativando câmera nativa</strong><span>Autorize o navegador para manter a captura automática.</span></div></>}
           <div className="capture-region" style={{ left: `${region.x * 100}%`, top: `${region.y * 100}%`, width: `${region.width * 100}%`, height: `${region.height * 100}%` }} onPointerDown={(event) => setInteraction({ mode: 'move', startX: event.clientX, startY: event.clientY, region })}>
             <span>REGIÃO DE CAPTURA</span><i onPointerDown={(event) => { event.stopPropagation(); setInteraction({ mode: 'resize', startX: event.clientX, startY: event.clientY, region }) }} aria-label="Redimensionar região" />
@@ -244,6 +246,7 @@ export default function Monitoring() {
         </div>
         <footer className="camera-meta"><div><span>Fonte</span><strong>{active.kind === 'native' ? 'Webcam USB / integrada' : 'IPv4 privado'}</strong></div><div><span>Gate</span><strong>Retângulo editável</strong></div><div><span>Captura</span><strong>Centro dentro da região</strong></div></footer>
         {active.kind === 'native' && !stream && <div className="monitor-actions"><button className="button" type="button" onClick={startNative}><Icon name="camera" />Tentar ativar câmera</button></div>}
+        {active.kind === 'network' && !networkReady && <div className="monitor-actions"><button className="button" type="button" onClick={() => { setMessage('Tentando reconectar à câmera IP...'); setNetworkAttempt((attempt) => attempt + 1) }}><Icon name="refresh" />Tentar reconectar</button></div>}
       </article>
       <aside className="control-panel">
         <div className="panel-title"><div><Icon name="settings" /><span>Fontes e região</span></div></div>

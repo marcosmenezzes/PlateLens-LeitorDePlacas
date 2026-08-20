@@ -85,11 +85,16 @@ test('câmera IP selecionada usa o stream como fonte de reconhecimento', async (
     HTMLCanvasElement.prototype.toBlob = function (callback) { callback(new Blob(['frame'], { type: 'image/jpeg' })) }
   })
   await page.route('**/api/cameras', (route) => route.fulfill({ json: [{ id: '10000000-0000-0000-0000-000000000001', name: 'Câmera celular', sourceKind: 'Network', ipAddress: '192.168.15.6', port: 4747, isActive: true }] }))
-  await page.route('**/api/cameras/*/stream', (route) => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64') }))
+  let streams = 0
+  await page.route('**/api/cameras/*/stream*', (route) => ++streams === 1
+    ? route.fulfill({ status: 502 })
+    : route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64') }))
   let attempts = 0
   await page.route('**/api/vision/recognize', (route) => { attempts++; return route.fulfill({ json: { recorded: false, detections: [] } }) })
 
   await page.goto('/monitoring')
+  await page.getByRole('button', { name: 'Tentar reconectar' }).click()
+  await expect.poll(() => streams).toBeGreaterThan(1)
   await expect(page.getByAltText('Vídeo ao vivo de Câmera celular')).toBeVisible()
   await expect.poll(() => attempts).toBeGreaterThan(0)
 })
